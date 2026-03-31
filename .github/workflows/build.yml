@@ -35,12 +35,16 @@ jobs:
     - name: Build Mac ARM64
       run: GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o fs_index_mac_arm64 fs_index.go
     
+    - name: Generate version
+      id: version
+      run: echo "version=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+    
     - name: Create Release
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: fs_index_*
-        tag_name: v${{ github.run_number }}
-        name: Build ${{ github.run_number }}
+        tag_name: v${{ steps.version.outputs.version }}
+        name: Build ${{ steps.version.outputs.version }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
