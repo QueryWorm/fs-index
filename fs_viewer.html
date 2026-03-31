@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FS Index Viewer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg:        #0f1520;
+    --panel:     #131d2e;
+    --border:    #243a5e;
+    --header:    #172035;
+    --cyan:      #29b6f6;
+    --green:     #4caf50;
+    --yellow:    #ffca28;
+    --red:       #ef5350;
+    --orange:    #ff9800;
+    --dim:       #37537a;
+    --text:      #cfe0f5;
+    --text-dim:  #5a7fa0;
+    --text-sub:  #3d607f;
+    --select-bg: #1a3557;
+    --select-bd: #29b6f6;
+    --font-ui:   'Inter', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── TITLEBAR ── */
+  #titlebar {
+    background: var(--header);
+    border-bottom: 1px solid var(--border);
+    padding: 7px 18px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-shrink: 0;
+  }
+  .logo {
+    font-family: var(--font-mono);
+    color: var(--cyan);
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 2px;
+  }
+  .logo span { color: var(--green); }
+  #stats-bar {
+    display: flex;
+    gap: 22px;
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-left: auto;
+  }
+  #stats-bar b { color: var(--text); font-weight: 600; }
+
+  /* ── TOOLBAR ── */
+  #toolbar {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 7px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  #search {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    padding: 5px 12px;
+    width: 260px;
+    outline: none;
+    border-radius: 3px;
+  }
+  #search:focus { border-color: var(--cyan); }
+  #search::placeholder { color: var(--dim); }
+
+  .btn {
+    background: var(--header);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 5px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    border-radius: 3px;
+  }
+  .btn:hover { border-color: var(--cyan); color: var(--cyan); }
+  .btn.active { border-color: var(--yellow); color: var(--yellow); background: rgba(255,202,40,.07); }
+  label.btn { display: inline-block; }
+
+  .sep { color: var(--dim); font-size: 16px; }
+  .path-display {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* ── MAIN ── */
+  #main { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── TREE PANEL ── */
+  #tree-panel {
+    flex: 1;
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  #col-header {
+    display: flex;
+    align-items: center;
+    padding: 5px 10px;
+    background: var(--header);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-sub);
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  /* ── TREE ROWS ── */
+  .tr {
+    display: flex;
+    align-items: center;
+    padding: 3px 10px 3px 0;
+    cursor: pointer;
+    white-space: nowrap;
+    min-height: 26px;
+    user-select: none;
+    border-bottom: 1px solid rgba(36,58,94,.4);
+  }
+  .tr:hover { background: rgba(41,182,246,.06); }
+  .tr.sel {
+    background: var(--select-bg);
+    border-bottom-color: rgba(41,182,246,.2);
+    outline: 1px solid rgba(41,182,246,.35);
+    outline-offset: -1px;
+  }
+
+  .tr-indent { flex-shrink: 0; }
+  .tr-toggle {
+    width: 18px;
+    text-align: center;
+    color: var(--dim);
+    font-size: 9px;
+    flex-shrink: 0;
+    padding-top: 1px;
+  }
+  .tr:hover .tr-toggle { color: var(--cyan); }
+  .tr-icon { width: 22px; text-align: center; font-size: 14px; flex-shrink: 0; }
+  .tr-name { flex: 1; overflow: hidden; text-overflow: ellipsis; font-size: 14px; font-weight: 400; }
+  .tr-size {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    width: 80px;
+    text-align: right;
+    flex-shrink: 0;
+    padding-right: 14px;
+  }
+  .tr-date {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    width: 152px;
+    flex-shrink: 0;
+    padding-right: 8px;
+  }
+
+  /* Type colours */
+  .t-dir    .tr-name  { color: var(--cyan); font-weight: 500; }
+  .t-dir    .tr-icon  { opacity: .8; }
+  .t-symlink .tr-name { color: var(--orange); font-style: italic; }
+  .t-error  .tr-name  { color: var(--text-sub); }
+  .t-error  .tr-icon  { color: var(--text-sub); }
+  .t-file   .tr-name  { color: var(--text); }
+
+  /* Interesting */
+  .t-interesting .tr-name { color: var(--yellow); font-weight: 500; }
+  .t-interesting .tr-icon { color: var(--yellow); }
+  .t-interesting .tr-size { color: var(--orange); }
+  .flag { font-size: 10px; color: var(--orange); margin-left: 5px; opacity: .85; }
+
+  /* ── DETAIL PANEL ── */
+  #detail-panel {
+    width: 300px;
+    border-left: 1px solid var(--border);
+    background: var(--panel);
+    overflow: auto;
+    flex-shrink: 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .det-head {
+    padding: 8px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-sub);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    background: var(--header);
+    position: sticky;
+    top: 0;
+  }
+  #detail-content { padding: 10px 14px 20px; }
+
+  .det-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    word-break: break-all;
+    margin-bottom: 12px;
+    line-height: 1.4;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .det-name.interesting { color: var(--yellow); }
+  .det-name.dir  { color: var(--cyan); }
+  .det-name.symlink { color: var(--orange); }
+  .det-name.error { color: var(--text-sub); }
+
+  .det-badge {
+    display: inline-block;
+    background: rgba(255,202,40,.15);
+    border: 1px solid rgba(255,202,40,.4);
+    color: var(--yellow);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 2px;
+    margin-bottom: 12px;
+    letter-spacing: .5px;
+  }
+
+  .det-row {
+    display: flex;
+    gap: 0;
+    margin-bottom: 8px;
+    flex-direction: column;
+  }
+  .det-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-sub);
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    margin-bottom: 2px;
+  }
+  .det-val {
+    font-size: 13px;
+    color: var(--text);
+    word-break: break-all;
+    line-height: 1.4;
+  }
+  .det-val.mono { font-family: var(--font-mono); font-size: 12px; }
+  .det-val.big {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text);
+    font-family: var(--font-mono);
+  }
+  .det-val.big-sub { font-size: 11px; color: var(--text-dim); margin-top: 1px; font-family: var(--font-mono); }
+  .det-val.red { color: var(--red); }
+  .det-val.cyan { color: var(--cyan); }
+  .det-divider { height: 1px; background: var(--border); margin: 10px 0; opacity: .5; }
+
+  /* ── DROP ZONE ── */
+  #dropzone {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 22px; z-index: 100;
+  }
+  #dropzone.hidden { display: none; }
+  #dropzone.drag { background: #0a1018; }
+  .dz-box {
+    border: 2px dashed var(--border);
+    padding: 52px 90px;
+    text-align: center;
+    border-radius: 4px;
+    transition: border-color .15s;
+  }
+  #dropzone.drag .dz-box { border-color: var(--cyan); }
+  .dz-title { font-family: var(--font-mono); font-size: 22px; font-weight: 600; color: var(--cyan); letter-spacing: 3px; margin-bottom: 14px; }
+  .dz-sub { color: var(--text-dim); font-size: 14px; line-height: 2; }
+  .dz-sub b { color: var(--text); }
+  .dz-btn { background: var(--header); border: 1px solid var(--cyan); color: var(--cyan); font-family: var(--font-ui); font-size: 14px; font-weight: 500; padding: 10px 30px; cursor: pointer; border-radius: 3px; }
+  .dz-btn:hover { background: var(--select-bg); }
+  .prog-wrap { width: 340px; }
+  .prog-bar { height: 3px; background: var(--border); overflow: hidden; margin-bottom: 8px; border-radius: 2px; }
+  .prog-fill { height: 100%; background: var(--cyan); width: 0%; transition: width .1s; }
+  .prog-txt { font-size: 13px; color: var(--text-dim); text-align: center; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- DROP ZONE -->
+<div id="dropzone">
+  <div class="dz-box">
+    <div class="dz-title">FS INDEX VIEWER</div>
+    <div class="dz-sub">Перетащи <b>fs_index.jsonl</b> сюда<br>или нажми кнопку ниже</div>
+  </div>
+  <label class="dz-btn" for="fi0">📂 Открыть файл</label>
+  <input type="file" id="fi0" accept=".jsonl,.json,.txt" style="display:none">
+  <div class="prog-wrap">
+    <div class="prog-bar"><div class="prog-fill" id="pf"></div></div>
+    <div class="prog-txt" id="pt"></div>
+  </div>
+</div>
+
+<!-- TITLE -->
+<div id="titlebar">
+  <div class="logo">FS<span>INDEX</span> VIEWER</div>
+  <div id="stats-bar">
+    <span>Файлов: <b id="sf">—</b></span>
+    <span>Папок: <b id="sd">—</b></span>
+    <span>Интересных: <b id="si" style="color:var(--yellow)">—</b></span>
+    <span>Ошибок: <b id="se" style="color:var(--red)">—</b></span>
+    <span id="sos" style="color:var(--dim)"></span>
+  </div>
+</div>
+
+<!-- TOOLBAR -->
+<div id="toolbar">
+  <label class="btn" for="fi1">📂 Открыть</label>
+  <input type="file" id="fi1" accept=".jsonl,.json,.txt" style="display:none">
+  <span class="sep">│</span>
+  <input type="text" id="search" placeholder="🔍  Поиск по имени...">
+  <button class="btn" id="btn-int">⚠ Только интересные</button>
+  <button class="btn" id="btn-exp">▼ Развернуть всё</button>
+  <button class="btn" id="btn-col">▶ Свернуть всё</button>
+  <span class="sep">│</span>
+  <div class="path-display" id="cur-path">—</div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <div id="tree-panel">
+    <div id="col-header">
+      <span style="width:6px;flex-shrink:0"></span>
+      <span style="width:18px;flex-shrink:0"></span>
+      <span style="width:22px;flex-shrink:0"></span>
+      <span style="flex:1;padding-left:2px">Имя</span>
+      <span style="width:80px;text-align:right;padding-right:14px">Размер</span>
+      <span style="width:152px">Изменён</span>
+    </div>
+    <div id="tree-root"></div>
+  </div>
+
+  <div id="detail-panel">
+    <div class="det-head">Детали</div>
+    <div id="detail-content">
+      <div style="color:var(--dim);padding:16px 0;font-size:13px">Выбери файл или папку</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════
+const S = {
+  nodes: {},
+  roots: [],
+  selPath: null,
+  filterInt: false,
+  searchQ: '',
+};
+
+// ══════════════════════════════════════
+//  FILE LOADING
+// ══════════════════════════════════════
+function handleFile(file) {
+  const dz = $('#dropzone'), pf = $('#pf'), pt = $('#pt');
+  pf.style.width = '0%';
+  pt.textContent = 'Читаю файл...';
+  dz.classList.remove('hidden');
+
+  const reader = new FileReader();
+  reader.onprogress = e => {
+    if (e.lengthComputable) {
+      const p = (e.loaded / e.total * 100).toFixed(0);
+      pf.style.width = p + '%';
+      pt.textContent = 'Загрузка... ' + p + '%';
+    }
+  };
+  reader.onload = e => {
+    pf.style.width = '100%';
+    pt.textContent = 'Строю дерево...';
+    setTimeout(() => {
+      try { parseAndBuild(e.target.result); dz.classList.add('hidden'); }
+      catch(err) { pt.textContent = 'Ошибка: ' + err.message; console.error(err); }
+    }, 30);
+  };
+  reader.onerror = () => { pt.textContent = 'Не удалось прочитать файл.'; };
+  reader.readAsText(file, 'utf-8');
+}
+
+// ══════════════════════════════════════
+//  PARSE + BUILD
+// ══════════════════════════════════════
+function parseAndBuild(text) {
+  const lines = text.split('\n');
+  S.nodes = {};
+  S.roots = [];
+
+  let meta = null;
+  // Use Map to DEDUPLICATE by path — last occurrence wins
+  const recMap = new Map();
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    let obj;
+    try { obj = JSON.parse(line); } catch(e) { continue; }
+    if (obj._meta) { meta = obj; continue; }
+    if (!obj.path) continue;
+    recMap.set(obj.path, obj);   // ← duplicate paths overwrite, no doubles
+  }
+
+  const records = [...recMap.values()];
+
+  // Build node map
+  for (const r of records) {
+    S.nodes[r.path] = {
+      path:        r.path,
+      name:        r.name || baseName(r.path),
+      ext:         r.ext  || '',
+      size:        r.size || 0,
+      type:        r.type || 'file',
+      mtime:       r.mtime || '',
+      mode:        r.mode || '',
+      interesting: !!r.interesting,
+      error:       r.error || '',
+      children:    [],
+      expanded:    false,
+    };
+  }
+
+  // Link to parents
+  for (const r of records) {
+    const par = parentOf(r.path);
+    if (par !== null && S.nodes[par]) {
+      S.nodes[par].children.push(r.path);
+    } else {
+      S.roots.push(r.path);
+    }
+  }
+
+  S.roots = [...new Set(S.roots)];
+
+  // Sort: dirs first, then alpha
+  for (const key of Object.keys(S.nodes)) {
+    S.nodes[key].children.sort((a, b) => {
+      const na = S.nodes[a], nb = S.nodes[b];
+      if (!na || !nb) return 0;
+      if (na.type === 'dir' && nb.type !== 'dir') return -1;
+      if (na.type !== 'dir' && nb.type === 'dir') return  1;
+      return na.name.localeCompare(nb.name, undefined, {sensitivity:'base'});
+    });
+  }
+
+  // Auto-expand roots
+  for (const r of S.roots) if (S.nodes[r]) S.nodes[r].expanded = true;
+
+  // Precompute: does this dir have any interesting descendant?
+  // We cache on the node so we don't recompute on every render.
+  function calcInteresting(path) {
+    const node = S.nodes[path];
+    if (!node) return false;
+    if (node.interesting) return true;
+    if (node.type === 'dir') {
+      const result = node.children.some(c => calcInteresting(c));
+      node._hasInteresting = result;
+      return result;
+    }
+    return false;
+  }
+  for (const r of S.roots) calcInteresting(r);
+
+  renderStats(meta, records);
+  renderTree();
+}
+
+// ══════════════════════════════════════
+//  PATH HELPERS
+// ══════════════════════════════════════
+function baseName(p) {
+  const m = p.match(/[^\\/]+$/);
+  return m ? m[0] : p;
+}
+
+function parentOf(p) {
+  const hasBackslash = p.includes('\\');
+  const sep = hasBackslash ? '\\' : '/';
+  const s = (p.length > 1 && p.endsWith(sep)) ? p.slice(0, -1) : p;
+  const idx = s.lastIndexOf(sep);
+  if (idx < 0) return null;
+  if (idx === 0) return s === '/' ? null : '/';
+  const par = s.slice(0, idx);
+  if (hasBackslash && /^[A-Za-z]:$/.test(par)) {
+    const dr = par.toUpperCase() + '\\';
+    if (p.toUpperCase() === dr) return null;
+    return dr;
+  }
+  if (par === p) return null;
+  return par;
+}
+
+// ══════════════════════════════════════
+//  STATS
+// ══════════════════════════════════════
+function renderStats(meta, records) {
+  let files = 0, dirs = 0, interesting = 0, errors = 0;
+  for (const r of records) {
+    if      (r.type === 'file')  { files++; if (r.interesting) interesting++; }
+    else if (r.type === 'dir')   dirs++;
+    else if (r.type === 'error') errors++;
+  }
+  $('#sf').textContent = files.toLocaleString();
+  $('#sd').textContent = dirs.toLocaleString();
+  $('#si').textContent = interesting.toLocaleString();
+  $('#se').textContent = errors.toLocaleString();
+  if (meta) $('#sos').textContent = (meta.os||'') + ' ' + (meta.arch||'');
+}
+
+// ══════════════════════════════════════
+//  RENDER
+// ══════════════════════════════════════
+function renderTree() {
+  const container = $('#tree-root');
+  const frag = document.createDocumentFragment();
+  const q = S.searchQ.toLowerCase();
+
+  function walk(path, depth) {
+    const node = S.nodes[path];
+    if (!node) return;
+
+    // Interesting filter
+    if (S.filterInt) {
+      if (node.type === 'dir') {
+        // Skip entire subtree if no interesting files inside
+        if (!node._hasInteresting) return;
+      } else if (!node.interesting) {
+        return;
+      }
+    }
+
+    const nameMatch = !q || node.name.toLowerCase().includes(q);
+    if (nameMatch) frag.appendChild(makeRow(node, depth));
+    if (node.type === 'dir' && node.expanded)
+      for (const child of node.children) walk(child, depth + 1);
+  }
+
+  for (const r of S.roots) walk(r, 0);
+  container.innerHTML = '';
+  container.appendChild(frag);
+}
+
+const EXT_ICONS = {
+  '.key':'🔑','.pem':'🔑','.p12':'🔑','.pfx':'🔑','.ppk':'🔑','.crt':'🔑','.cer':'🔑',
+  '.kdbx':'🔐','.kdb':'🔐',
+  '.env':'🔒','.htpasswd':'🔒',
+  '.sql':'🗄','.db':'🗄','.sqlite':'🗄','.sqlite3':'🗄','.mdb':'🗄','.accdb':'🗄',
+  '.log':'📋',
+  '.ps1':'⚙','.bat':'⚙','.cmd':'⚙','.sh':'⚙','.bash':'⚙','.py':'🐍','.rb':'⚙','.pl':'⚙',
+  '.zip':'📦','.7z':'📦','.rar':'📦','.tar':'📦','.gz':'📦',
+  '.xlsx':'📊','.xls':'📊','.csv':'📊',
+  '.json':'{ }','.yaml':'{ }','.yml':'{ }','.toml':'{ }',
+  '.ovpn':'🌐','.rdp':'🖥',
+  '.pdf':'📄','.doc':'📄','.docx':'📄',
+  '.png':'🖼','.jpg':'🖼','.jpeg':'🖼','.gif':'🖼','.bmp':'🖼','.ico':'🖼',
+  '.exe':'⚡','.dll':'⚡','.msi':'⚡',
+};
+
+function fmtSize(b) {
+  if (!b) return '';
+  if (b < 1024)       return b + ' B';
+  if (b < 1048576)    return (b/1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b/1048576).toFixed(1) + ' MB';
+  return (b/1073741824).toFixed(2) + ' GB';
+}
+
+function fmtDate(mtime) {
+  if (!mtime) return '';
+  return mtime.replace('T', '  ').replace('Z', '');
+}
+
+function makeRow(node, depth) {
+  const row = document.createElement('div');
+  let cls = 'tr t-' + node.type;
+  if (node.interesting) cls += ' t-interesting';
+  if (node.path === S.selPath) cls += ' sel';
+  row.className = cls;
+  row._p = node.path;
+
+  // indent
+  const ind = document.createElement('span');
+  ind.className = 'tr-indent';
+  ind.style.paddingLeft = (depth * 18 + 8) + 'px';
+  row.appendChild(ind);
+
+  // toggle
+  const tog = document.createElement('span');
+  tog.className = 'tr-toggle';
+  tog.textContent = node.type === 'dir' ? (node.expanded ? '▼' : '▶') : '';
+  row.appendChild(tog);
+
+  // icon
+  const ico = document.createElement('span');
+  ico.className = 'tr-icon';
+  ico.textContent = node.type === 'dir'     ? '📁' :
+                    node.type === 'symlink' ? '🔗' :
+                    node.type === 'error'   ? '✖' :
+                    (EXT_ICONS[node.ext] || '·');
+  row.appendChild(ico);
+
+  // name
+  const nm = document.createElement('span');
+  nm.className = 'tr-name';
+  nm.textContent = node.name;
+  if (node.interesting) {
+    const flag = document.createElement('span');
+    flag.className = 'flag';
+    flag.textContent = '⚑';
+    nm.appendChild(flag);
+  }
+  row.appendChild(nm);
+
+  // size
+  const sz = document.createElement('span');
+  sz.className = 'tr-size';
+  sz.textContent = node.type === 'file' ? fmtSize(node.size) : '';
+  row.appendChild(sz);
+
+  // date
+  const dt = document.createElement('span');
+  dt.className = 'tr-date';
+  dt.textContent = fmtDate(node.mtime);
+  row.appendChild(dt);
+
+  row.addEventListener('click', () => clickRow(node.path));
+  return row;
+}
+
+// ══════════════════════════════════════
+//  CLICK / DETAIL
+// ══════════════════════════════════════
+function clickRow(path) {
+  const node = S.nodes[path];
+  if (!node) return;
+  if (node.type === 'dir') node.expanded = !node.expanded;
+  S.selPath = path;
+  renderTree();
+  showDetail(node);
+  $('#cur-path').textContent = path;
+}
+
+function showDetail(node) {
+  const el = $('#detail-content');
+  let html = '';
+
+  // Big name at top
+  const nameCls = node.interesting ? 'interesting' : node.type === 'dir' ? 'dir' : node.type === 'symlink' ? 'symlink' : node.type === 'error' ? 'error' : '';
+  html += `<div class="det-name ${nameCls}">${esc(node.name)}</div>`;
+
+  if (node.interesting)
+    html += `<div class="det-badge">⚑ ИНТЕРЕСНЫЙ ФАЙЛ</div>`;
+
+  // Size big display for files
+  if (node.type === 'file' && node.size) {
+    html += `<div class="det-row">
+      <div class="det-label">Размер</div>
+      <div class="det-val big">${esc(fmtSize(node.size))}</div>
+      <div class="det-val big-sub">${node.size.toLocaleString()} байт</div>
+    </div>`;
+  }
+
+  if (node.mtime) {
+    html += `<div class="det-row">
+      <div class="det-label">Изменён</div>
+      <div class="det-val mono">${esc(node.mtime.replace('T',' ').replace('Z',''))}</div>
+    </div>`;
+  }
+
+  html += '<div class="det-divider"></div>';
+
+  html += `<div class="det-row">
+    <div class="det-label">Тип</div>
+    <div class="det-val ${node.type === 'dir' ? 'cyan' : node.type === 'error' ? 'red' : ''}">${esc(node.type)}</div>
+  </div>`;
+
+  if (node.ext) {
+    html += `<div class="det-row">
+      <div class="det-label">Расширение</div>
+      <div class="det-val mono">${esc(node.ext)}</div>
+    </div>`;
+  }
+
+  if (node.mode) {
+    html += `<div class="det-row">
+      <div class="det-label">Права</div>
+      <div class="det-val mono">${esc(node.mode)}</div>
+    </div>`;
+  }
+
+  html += '<div class="det-divider"></div>';
+
+  html += `<div class="det-row">
+    <div class="det-label">Путь</div>
+    <div class="det-val mono" style="font-size:11px;color:var(--text-dim)">${esc(node.path)}</div>
+  </div>`;
+
+  if (node.error) {
+    html += `<div class="det-row">
+      <div class="det-label">Ошибка</div>
+      <div class="det-val red">${esc(node.error)}</div>
+    </div>`;
+  }
+
+  if (node.type === 'dir') {
+    html += '<div class="det-divider"></div>';
+    html += `<div class="det-row">
+      <div class="det-label">Элементов</div>
+      <div class="det-val big" style="font-size:22px">${node.children.length.toLocaleString()}</div>
+    </div>`;
+    const ic = node.children.filter(p => S.nodes[p]?.interesting).length;
+    if (ic) html += `<div class="det-row">
+      <div class="det-label">Интересных</div>
+      <div class="det-val" style="color:var(--yellow);font-weight:600;font-size:16px">${ic} ⚑</div>
+    </div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ══════════════════════════════════════
+//  TOOLBAR
+// ══════════════════════════════════════
+$('#search').addEventListener('input', function() {
+  S.searchQ = this.value;
+  if (S.searchQ)
+    for (const k of Object.keys(S.nodes))
+      if (S.nodes[k].type === 'dir') S.nodes[k].expanded = true;
+  renderTree();
+});
+
+$('#btn-int').addEventListener('click', function() {
+  S.filterInt = !S.filterInt;
+  this.classList.toggle('active', S.filterInt);
+  if (S.filterInt)
+    for (const k of Object.keys(S.nodes))
+      if (S.nodes[k].type === 'dir') S.nodes[k].expanded = true;
+  renderTree();
+});
+
+$('#btn-exp').addEventListener('click', () => {
+  for (const k of Object.keys(S.nodes))
+    if (S.nodes[k].type === 'dir') S.nodes[k].expanded = true;
+  renderTree();
+});
+
+$('#btn-col').addEventListener('click', () => {
+  for (const k of Object.keys(S.nodes))
+    if (S.nodes[k].type === 'dir') S.nodes[k].expanded = false;
+  for (const r of S.roots) if (S.nodes[r]) S.nodes[r].expanded = true;
+  renderTree();
+});
+
+// ══════════════════════════════════════
+//  FILE INPUT + DROP
+// ══════════════════════════════════════
+['fi0','fi1'].forEach(id => {
+  document.getElementById(id).addEventListener('change', function() {
+    if (this.files[0]) handleFile(this.files[0]);
+  });
+});
+
+const dz = $('#dropzone');
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+document.body.addEventListener('dragover', e => e.preventDefault());
+document.body.addEventListener('drop', e => {
+  e.preventDefault();
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+// ══════════════════════════════════════
+//  KEYBOARD
+// ══════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if (document.activeElement === $('#search')) return;
+  if (!S.selPath) return;
+  const rows = Array.from(document.querySelectorAll('.tr'));
+  const idx  = rows.findIndex(r => r._p === S.selPath);
+
+  if (e.key === 'ArrowDown' && idx < rows.length - 1) {
+    clickRow(rows[idx+1]._p); rows[idx+1].scrollIntoView({block:'nearest'}); e.preventDefault();
+  } else if (e.key === 'ArrowUp' && idx > 0) {
+    clickRow(rows[idx-1]._p); rows[idx-1].scrollIntoView({block:'nearest'}); e.preventDefault();
+  } else if (e.key === 'ArrowRight') {
+    const n = S.nodes[S.selPath];
+    if (n?.type === 'dir' && !n.expanded) { n.expanded = true; renderTree(); }
+    e.preventDefault();
+  } else if (e.key === 'ArrowLeft') {
+    const n = S.nodes[S.selPath];
+    if (n?.type === 'dir' && n.expanded) { n.expanded = false; renderTree(); }
+    else { const par = parentOf(S.selPath); if (par && S.nodes[par]) clickRow(par); }
+    e.preventDefault();
+  }
+});
+
+// ── shorthand ──
+function $(sel) { return document.querySelector(sel); }
+</script>
+</body>
+</html>

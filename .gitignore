@@ -1,0 +1,18 @@
+data/
+
+# Бинарники (скомпилированные)
+*.exe
+fs_index_*
+!fs_index.go
+
+# Выходные данные
+*.jsonl
+
+# Временное
+*.tmp
+*.log
+out_*
+
+# Системное
+.DS_Store
+Thumbs.db
