@@ -35,8 +35,12 @@ jobs:
     - name: Build Mac ARM64
       run: GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o fs_index_mac_arm64 fs_index.go
     
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
+    - name: Create Release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v1
       with:
-        name: binaries
-        path: fs_index_*
+        files: fs_index_*
+        tag_name: v${{ github.run_number }}
+        name: Build ${{ github.run_number }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
